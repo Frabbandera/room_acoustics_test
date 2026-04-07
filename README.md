@@ -365,7 +365,7 @@ Natural next steps suggested by the current codebase are:
 - support for per-face material assignment
 - multi-band batch execution in a single run
 - additional room-acoustic parameters such as reverberation-time-related metrics
-- directivity-aware sources and binaural receiver handling
+- directivity-aware sources
 - better distinction between physical multi-source combination and display-only averaging
 - asynchronous / incremental backend execution
 - richer export formats and plotting/report utilities
