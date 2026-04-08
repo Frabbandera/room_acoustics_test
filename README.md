@@ -140,7 +140,6 @@ This is the single backend entry point. It:
 - loads `scene.json`
 - validates the exported payload
 - resolves the requested simulation mode
-- optionally seeds Pyroomacoustics for deterministic hybrid runs
 - dispatches the selected solver
 - writes `results.json` and `results.csv`
 
@@ -207,7 +206,6 @@ Characteristics:
   - `energy_thres`
   - `time_thres`
 - supports deterministic runs through a fixed random seed
-- emits a warning in the UI because the hybrid path should be reviewed carefully
 - automatically falls back to `ISM_ONLY` if hybrid execution fails
 
 The UI also warns when `HYBRID_RT` is requested with `max_order > 3`, matching the caution embedded in the current code.
@@ -327,10 +325,6 @@ The room must be a mesh object named **`RoomVolume`** and it must satisfy all of
 - receiver areas must not be rotated
 - all receiver-area vertices must lie inside the room footprint
 - the receiver grid is generated from a uniform spacing value and clipped against the `MAP_*` polygon
-
-### Coordinate convention
-
-The exported room-space coordinates currently preserve **world X/Y** and only normalize **Z** relative to the floor level.
 
 ## Current limitations
 
