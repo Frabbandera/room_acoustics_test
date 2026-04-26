@@ -1,0 +1,9 @@
+name: pra_test
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - numpy
+  - scipy
+  - pyroomacoustics=0.10.0

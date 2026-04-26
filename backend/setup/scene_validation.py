@@ -188,7 +188,10 @@ def validate_sources_block(scene):
     sources = _require_list(scene.get(SK.SOURCES), "scene.sources")
 
     if len(sources) == 0:
-        raise ValueError("scene.sources must contain at least one source.")
+        raise ValueError(
+			"scene.sources must contain at least one source."
+			"Make sure at least one obkect named SRC_* exists in your Blender scene"
+			)
 
     for index, source in enumerate(sources):
         source = _require_dict(source, f"scene.sources[{index}]")
@@ -214,7 +217,10 @@ def validate_receiver_areas_block(scene):
     )
 
     if len(receiver_areas) == 0:
-        raise ValueError("scene.receiver_areas must contain at least one receiver area.")
+        raise ValueError(
+			"scene.receiver_areas must contain at least one receiver area."
+			"Make sure at least one object named MAP_* exists in your Blender scene"
+			)
 
     for area_index, area in enumerate(receiver_areas):
         area = _require_dict(area, f"scene.receiver_areas[{area_index}]")
