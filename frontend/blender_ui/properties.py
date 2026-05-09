@@ -373,3 +373,8 @@ class RA_TestProperties(PropertyGroup):
         name="Last Context",
         default="",
     )
+
+    last_results_path: StringProperty(
+        name="Last Results Path",
+        default="",
+    )

@@ -266,6 +266,7 @@ class RA_PT_OutputPanel(Panel):
 
         layout.separator()
         layout.operator("ra.run_grid_test", icon="PLAY")
+        layout.operator("ra.redisplay_results", icon="FILE_REFRESH")
 
 
 class RA_PT_RunStatusPanel(Panel):

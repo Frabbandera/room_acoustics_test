@@ -61,6 +61,7 @@ from frontend.blender_ui.operators import (
     RA_OT_ApplyRoomVolumeDisplay,
     RA_OT_RunGridTest,
     RA_OT_CreateAudienceArea,
+    RA_OT_RedisplayResults,
 )
 
 # ---------------------------------------------------------------------------
@@ -79,6 +80,7 @@ classes = (
     RA_PT_OutputPanel,
     RA_PT_RunStatusPanel,
     RA_PT_EnvironmentPanel,
+    RA_OT_RedisplayResults,
 )
 
 # ---------------------------------------------------------------------------

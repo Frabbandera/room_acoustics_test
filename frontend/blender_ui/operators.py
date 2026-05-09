@@ -208,6 +208,7 @@ class RA_OT_RunGridTest(Operator):
 
             with results_path.open("r", encoding="utf-8") as f:
                 results = json.load(f)
+                props.last_results_path = str(results_path)
 
             simulation_info = results.get(RK.SIMULATION, {})
             requested_engine = simulation_info.get(
@@ -358,5 +359,74 @@ class RA_OT_RunGridTest(Operator):
             props.last_runtime_note = ""
             props.last_random_seed_note = ""
             props.last_context = ""
+            self.report({'ERROR'}, str(e))
+            return {'CANCELLED'}
+
+        class RA_OT_RedisplayResults(Operator):
+    bl_idname = "ra.redisplay_results"
+    bl_label = "Redisplay Results"
+    bl_description = "Redraw markers and heatmap from last results without rerunning the simulation"
+
+    def execute(self, context):
+        props = context.scene.ra_test_props
+
+        if not props.last_results_path:
+            self.report({'ERROR'}, "No results found. Run the simulation first.")
+            return {'CANCELLED'}
+
+        results_path = Path(props.last_results_path)
+        if not results_path.exists():
+            self.report({'ERROR'}, "Results file not found. Run the simulation first.")
+            return {'CANCELLED'}
+
+        try:
+            with results_path.open("r", encoding="utf-8") as f:
+                results = json.load(f)
+
+            metric_key = props.selected_metric
+            display_mode = props.display_mode
+            selected_source = props.selected_display_source
+            selected_area_name = props.selected_receiver_area
+
+            if display_mode == "single":
+                if not selected_source or selected_source not in results[RK.SOURCE_NAMES]:
+                    selected_source = results[RK.SOURCE_NAMES][0]
+            else:
+                selected_source = ""
+
+            available_area_names = [
+                area[RK.NAME]
+                for area in results[RK.RECEIVER_AREAS]
+            ]
+            if not selected_area_name or selected_area_name not in available_area_names:
+                selected_area_name = available_area_names[0]
+
+            area_results = get_selected_area_result(results, selected_area_name)
+            band_label = results[RK.BAND][RK.LABEL]
+
+            if props.create_markers:
+                create_result_markers(
+                    context,
+                    area_results,
+                    band_label,
+                    metric_key,
+                    display_mode,
+                    selected_source,
+                )
+
+            if props.create_heatmap:
+                create_heatmap_object(
+                    context,
+                    area_results,
+                    band_label,
+                    metric_key,
+                    display_mode,
+                    selected_source,
+                )
+
+            self.report({'INFO'}, f"Redisplayed {metric_key} from last results.")
+            return {'FINISHED'}
+
+        except Exception as e:
             self.report({'ERROR'}, str(e))
             return {'CANCELLED'}
