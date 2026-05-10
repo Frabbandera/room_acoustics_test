@@ -4,7 +4,8 @@ Geometry helpers for the Room Acoustics frontend.
 The module validates the RoomVolume mesh and extracts the simplified
 room definition used by the Blender UI and scene export layer.
 
-This file contains geometry validation and small geometric helper functions.
+This file contains geometry validation and boundary extraction helpers
+that support arbitrary non-convex and triangulated prismatic shapes.
 """
 
 # ---------------------------------------------------------------------------
@@ -148,44 +149,6 @@ def point_in_polygon_2d(point, polygon, include_borders=True):
     return inside
 
 
-def get_single_face_polygon_world_2d(mesh_obj, label):
-    mesh = mesh_obj.data
-
-    if len(mesh.polygons) != 1:
-        raise RuntimeError(
-            f"For this stage, '{label}' must be a mesh with exactly one face."
-        )
-
-    poly = mesh.polygons[0]
-    matrix_world = mesh_obj.matrix_world
-
-    verts_world = [matrix_world @ mesh.vertices[idx].co for idx in poly.vertices]
-    z_values = [float(v.z) for v in verts_world]
-
-    if (max(z_values) - min(z_values)) > _GEOM_TOL:
-        raise RuntimeError(
-            f"'{label}' must be planar and horizontal "
-            "(all vertices must share the same Z value)."
-        )
-
-    points_2d = [[float(v.x), float(v.y)] for v in verts_world]
-
-    unique_points = {tuple(p) for p in points_2d}
-    if len(unique_points) < 3:
-        raise RuntimeError(f"'{label}' does not define a valid polygon.")
-
-    points_2d = ensure_anticlockwise(points_2d)
-
-    if abs(polygon_signed_area_2d(points_2d)) < 1e-9:
-        raise RuntimeError(f"'{label}' has zero or near-zero area.")
-
-    z_mean = float(sum(z_values) / len(z_values))
-    return points_2d, z_mean
-
-# ---------------------------------------------------------------------------
-# Internal quantization and cleanup helpers
-# ---------------------------------------------------------------------------
-
 def _group_sorted_levels(values, tol=_GEOM_TOL):
     levels = []
 
@@ -195,96 +158,123 @@ def _group_sorted_levels(values, tol=_GEOM_TOL):
 
     return levels
 
-
-def _quantize_value(value, tol=_GEOM_TOL):
-    return int(round(float(value) / tol))
-
-
-def _quantize_xy_point(point, tol=_GEOM_TOL):
-    return (
-        _quantize_value(point[0], tol),
-        _quantize_value(point[1], tol),
-    )
-
-
-def _unordered_edge_key_2d(a, b, tol=_GEOM_TOL):
-    qa = _quantize_xy_point(a, tol)
-    qb = _quantize_xy_point(b, tol)
-    return tuple(sorted((qa, qb)))
-
-
-def _collect_unique_xy_points(points_xy, tol=_GEOM_TOL):
-    unique = {}
-
-    for x, y in points_xy:
-        key = _quantize_xy_point((x, y), tol)
-        if key not in unique:
-            unique[key] = [float(x), float(y)]
-
-    return list(unique.values())
-
-
-def _is_convex_polygon_2d(points_xy, tol=1e-9):
-    num_points = len(points_xy)
-
-    if num_points < 3:
-        return False
-
-    sign = 0
-
-    for i in range(num_points):
-        x1, y1 = points_xy[i]
-        x2, y2 = points_xy[(i + 1) % num_points]
-        x3, y3 = points_xy[(i + 2) % num_points]
-
-        cross = (x2 - x1) * (y3 - y2) - (y2 - y1) * (x3 - x2)
-
-        if abs(cross) <= tol:
-            continue
-
-        current_sign = 1 if cross > 0.0 else -1
-
-        if sign == 0:
-            sign = current_sign
-        elif current_sign != sign:
-            return False
-
-    return True
-
 # ---------------------------------------------------------------------------
-# Mesh face extraction helpers
+# Mesh boundary extraction helpers
 # ---------------------------------------------------------------------------
 
-def _face_world_vertices(mesh_obj, poly):
+def extract_horizontal_boundary_2d(mesh_obj, label, z_target=None, tol=_GEOM_TOL):
+    """
+    Extracts the continuous outer 2D boundary of horizontal faces on a given Z level.
+    Supports non-convex and multi-face (e.g. triangulated) flat surfaces.
+    """
+    bm = bmesh.new()
+    bm.from_mesh(mesh_obj.data)
     matrix_world = mesh_obj.matrix_world
-    mesh = mesh_obj.data
-    return [matrix_world @ mesh.vertices[idx].co for idx in poly.vertices]
+
+    target_faces = []
+    actual_z = z_target
+
+    # 1. Gather faces that lie flat on the target Z level
+    for f in bm.faces:
+        z_vals = [(matrix_world @ v.co).z for v in f.verts]
+        if max(z_vals) - min(z_vals) <= tol:
+            z_mean = sum(z_vals) / len(z_vals)
+            if actual_z is None:
+                actual_z = z_mean
+            if abs(z_mean - actual_z) <= tol:
+                target_faces.append(f)
+
+    if not target_faces:
+        bm.free()
+        raise RuntimeError(f"'{label}': No horizontal faces found.")
+
+    # 2. Find perimeter edges (edges connected to exactly 1 face in the target set)
+    boundary_edges = [
+        e for e in bm.edges 
+        if sum(1 for f in e.link_faces if f in target_faces) == 1
+    ]
+
+    if not boundary_edges:
+        bm.free()
+        raise RuntimeError(f"'{label}': Could not determine boundary.")
+
+    # 3. Build vertex adjacency map from boundary edges
+    adj = {}
+    for e in boundary_edges:
+        v1, v2 = e.verts
+        adj.setdefault(v1, []).append(v2)
+        adj.setdefault(v2, []).append(v1)
+
+    for v, neighbors in adj.items():
+        if len(neighbors) != 2:
+            bm.free()
+            raise RuntimeError(
+                f"'{label}': The boundary is not a clean, simple loop. "
+                "Ensure there are no holes, interior pillars, or self-intersecting geometry."
+            )
+
+    # 4. Walk the perimeter to extract the ordered vertices
+    start_v = boundary_edges[0].verts[0]
+    current_v = start_v
+    prev_v = None
+    ordered_verts = []
+
+    while True:
+        ordered_verts.append(current_v)
+        neighbors = adj[current_v]
+        next_v = neighbors[0] if neighbors[0] != prev_v else neighbors[1]
+
+        if next_v == start_v:
+            break
+        prev_v = current_v
+        current_v = next_v
+
+    points_2d = [
+        [float((matrix_world @ v.co).x), float((matrix_world @ v.co).y)] 
+        for v in ordered_verts
+    ]
+    bm.free()
+
+    # 5. Clean up duplicate or near-duplicate coordinates
+    cleaned_points = []
+    for p in points_2d:
+        if not cleaned_points or math.hypot(p[0] - cleaned_points[-1][0], p[1] - cleaned_points[-1][1]) > tol:
+            cleaned_points.append(p)
+    if len(cleaned_points) > 1 and math.hypot(cleaned_points[-1][0] - cleaned_points[0][0], cleaned_points[-1][1] - cleaned_points[0][1]) <= tol:
+        cleaned_points.pop()
+
+    # 6. Remove consecutive collinear points to simplify the array for Pyroomacoustics
+    final_points = []
+    num = len(cleaned_points)
+    if num >= 3:
+        for i in range(num):
+            p_prev = cleaned_points[i - 1]
+            p_curr = cleaned_points[i]
+            p_next = cleaned_points[(i + 1) % num]
+            
+            # Cross product check for collinearity
+            cross = (p_curr[0] - p_prev[0]) * (p_next[1] - p_curr[1]) - (p_curr[1] - p_prev[1]) * (p_next[0] - p_curr[0])
+            if abs(cross) > 1e-7:
+                final_points.append(p_curr)
+    else:
+        final_points = cleaned_points
+
+    if len(final_points) < 3:
+        raise RuntimeError(f"'{label}': Boundary does not define a valid 2D polygon.")
+
+    # 7. Ensure valid orientation
+    final_points = ensure_anticlockwise(final_points)
+
+    return final_points, float(actual_z)
 
 
-def _extract_horizontal_face_polygon_world_2d(mesh_obj, poly, label):
-    verts_world = _face_world_vertices(mesh_obj, poly)
-    z_values = [float(v.z) for v in verts_world]
-
-    if (max(z_values) - min(z_values)) > _GEOM_TOL:
-        raise RuntimeError(f"'{label}' must be horizontal.")
-
-    points_2d = [[float(v.x), float(v.y)] for v in verts_world]
-    unique_points = _collect_unique_xy_points(points_2d)
-
-    if len(unique_points) < 3:
-        raise RuntimeError(f"'{label}' does not define a valid polygon.")
-
-    if len(unique_points) != len(points_2d):
-        raise RuntimeError(
-            f"'{label}' contains duplicate vertices or unclean geometry."
-        )
-
-    points_2d = ensure_anticlockwise(points_2d)
-
-    if abs(polygon_signed_area_2d(points_2d)) < 1e-9:
-        raise RuntimeError(f"'{label}' has zero or near-zero area.")
-
-    return points_2d
+def get_single_face_polygon_world_2d(mesh_obj, label):
+    """
+    Kept for backwards compatibility with the export scripts, 
+    but it now extracts the boundary even if the mesh has multiple faces.
+    """
+    points_2d, z_mean = extract_horizontal_boundary_2d(mesh_obj, label)
+    return points_2d, z_mean
 
 # ---------------------------------------------------------------------------
 # Room validation and extraction
@@ -325,8 +315,8 @@ def validate_room_volume_vertical_prism(room_obj):
         bm.free()
 
     verts_world = [room_obj.matrix_world @ vert.co for vert in mesh.vertices]
-
     z_levels = _group_sorted_levels([float(v.z) for v in verts_world])
+
     if len(z_levels) != 2:
         raise RuntimeError(
             "'RoomVolume' must have exactly 2 distinct Z levels "
@@ -342,119 +332,12 @@ def validate_room_volume_vertical_prism(room_obj):
             "ceiling must be > 0."
         )
 
-    bottom_faces = []
-    top_faces = []
-    side_faces = []
-
-    for poly in mesh.polygons:
-        verts_poly = _face_world_vertices(room_obj, poly)
-        z_values = [float(v.z) for v in verts_poly]
-
-        if all(abs(z - z_floor) <= _GEOM_TOL for z in z_values):
-            bottom_faces.append(poly)
-        elif all(abs(z - z_ceil) <= _GEOM_TOL for z in z_values):
-            top_faces.append(poly)
-        else:
-            side_faces.append(poly)
-            for z in z_values:
-                if abs(z - z_floor) > _GEOM_TOL and abs(z - z_ceil) > _GEOM_TOL:
-                    raise RuntimeError(
-                        "'RoomVolume' is not a valid vertical prism: "
-                        "all vertices must lie only on the floor plane or the ceiling plane."
-                    )
-
-    if len(bottom_faces) != 1:
-        raise RuntimeError(
-            "For this stage, 'RoomVolume' must have exactly one floor face."
-        )
-
-    if len(top_faces) != 1:
-        raise RuntimeError(
-            "For this stage, 'RoomVolume' must have exactly one ceiling face."
-        )
-
-    floor_polygon_world_2d = _extract_horizontal_face_polygon_world_2d(
-        room_obj,
-        bottom_faces[0],
-        "The floor face of 'RoomVolume'",
+    # Automatically handle non-convexity, multiple floor faces, and triangulated surfaces
+    floor_polygon_world_2d, _ = extract_horizontal_boundary_2d(
+        room_obj, 
+        "The floor footprint of 'RoomVolume'", 
+        z_target=z_floor
     )
-
-    top_polygon_world_2d = _extract_horizontal_face_polygon_world_2d(
-        room_obj,
-        top_faces[0],
-        "The ceiling face of 'RoomVolume'",
-    )
-
-    if len(floor_polygon_world_2d) != len(top_polygon_world_2d):
-        raise RuntimeError(
-            "'RoomVolume' is not a valid vertical prism: "
-            "floor and ceiling must have the same number of vertices."
-        )
-
-    floor_keys = {_quantize_xy_point(point) for point in floor_polygon_world_2d}
-    top_keys = {_quantize_xy_point(point) for point in top_polygon_world_2d}
-
-    if floor_keys != top_keys:
-        raise RuntimeError(
-            "'RoomVolume' is not a valid vertical prism: "
-            "the XY projection of the ceiling must match the floor."
-        )
-
-    if not _is_convex_polygon_2d(floor_polygon_world_2d):
-        raise RuntimeError(
-            "For this stage, the footprint of 'RoomVolume' must be a convex polygon."
-        )
-
-    expected_side_edges = {
-        _unordered_edge_key_2d(
-            floor_polygon_world_2d[i],
-            floor_polygon_world_2d[(i + 1) % len(floor_polygon_world_2d)],
-        )
-        for i in range(len(floor_polygon_world_2d))
-    }
-
-    actual_side_edges = set()
-
-    for poly in side_faces:
-        verts_poly = _face_world_vertices(room_obj, poly)
-        z_values = [float(v.z) for v in verts_poly]
-
-        if not any(abs(z - z_floor) <= _GEOM_TOL for z in z_values):
-            raise RuntimeError(
-                "'RoomVolume' is not a valid vertical prism: "
-                "each side wall must touch the floor."
-            )
-
-        if not any(abs(z - z_ceil) <= _GEOM_TOL for z in z_values):
-            raise RuntimeError(
-                "'RoomVolume' is not a valid vertical prism: "
-                "each side wall must touch the ceiling."
-            )
-
-        unique_xy = _collect_unique_xy_points(
-            [[float(v.x), float(v.y)] for v in verts_poly]
-        )
-
-        if len(unique_xy) != 2:
-            raise RuntimeError(
-                "For this stage, each side wall of 'RoomVolume' must be a clean "
-                "vertical face connecting exactly one floor edge to the "
-                "corresponding ceiling edge."
-            )
-
-        actual_side_edges.add(_unordered_edge_key_2d(unique_xy[0], unique_xy[1]))
-
-    if actual_side_edges != expected_side_edges:
-        raise RuntimeError(
-            "'RoomVolume' is not a valid vertical prism: "
-            "the side walls must match the edges of the footprint exactly."
-        )
-
-    if len(side_faces) != len(floor_polygon_world_2d):
-        raise RuntimeError(
-            "For this stage, 'RoomVolume' must have exactly one side wall for "
-            "each footprint edge."
-        )
 
     return {
         "floor_polygon_world_2d": floor_polygon_world_2d,
