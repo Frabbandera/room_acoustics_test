@@ -362,7 +362,7 @@ class RA_OT_RunGridTest(Operator):
             self.report({'ERROR'}, str(e))
             return {'CANCELLED'}
 
-        class RA_OT_RedisplayResults(Operator):
+class RA_OT_RedisplayResults(Operator):
     bl_idname = "ra.redisplay_results"
     bl_label = "Redisplay Results"
     bl_description = "Redraw markers and heatmap from last results without rerunning the simulation"
@@ -371,13 +371,13 @@ class RA_OT_RunGridTest(Operator):
         props = context.scene.ra_test_props
 
         if not props.last_results_path:
-            self.report({'ERROR'}, "No results found. Run the simulation first.")
-            return {'CANCELLED'}
+            self.report({"ERROR"}, "No results found. Run the simulation first.")
+            return {"CANCELLED"}
 
         results_path = Path(props.last_results_path)
         if not results_path.exists():
-            self.report({'ERROR'}, "Results file not found. Run the simulation first.")
-            return {'CANCELLED'}
+            self.report({"ERROR"}, "Results file not found. Run the simulation first.")
+            return {"CANCELLED"}
 
         try:
             with results_path.open("r", encoding="utf-8") as f:
@@ -424,9 +424,9 @@ class RA_OT_RunGridTest(Operator):
                     selected_source,
                 )
 
-            self.report({'INFO'}, f"Redisplayed {metric_key} from last results.")
-            return {'FINISHED'}
+            self.report({"INFO"}, f"Redisplayed {metric_key} from last results.")
+            return {"FINISHED"}
 
         except Exception as e:
-            self.report({'ERROR'}, str(e))
-            return {'CANCELLED'}
+            self.report({"ERROR"}, str(e))
+            return {"CANCELLED"}

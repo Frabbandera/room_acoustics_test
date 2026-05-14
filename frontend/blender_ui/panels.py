@@ -266,8 +266,15 @@ class RA_PT_OutputPanel(Panel):
 
         layout.separator()
         layout.operator("ra.run_grid_test", icon="PLAY")
-        layout.operator("ra.redisplay_results", icon="FILE_REFRESH")
-
+        try:
+            from frontend.blender_ui.operators import RA_OT_RedisplayResults
+            try:
+                bpy.utils.register_class(RA_OT_RedisplayResults)
+            except Exception:
+                pass
+            layout.operator("ra.redisplay_results", icon="FILE_REFRESH")
+        except Exception as e:
+            layout.label(text=f"Redisplay unavailable: {str(e)[:30]}")
 
 class RA_PT_RunStatusPanel(Panel):
     bl_label = "Run Status"
