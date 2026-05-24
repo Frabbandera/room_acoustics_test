@@ -16,6 +16,7 @@ import bpy
 import shared.result_keys as RK
 import shared.scene_keys as SK
 
+
 # ---------------------------------------------------------------------------
 # Collection helpers
 # ---------------------------------------------------------------------------
@@ -77,7 +78,6 @@ def normalize_value(value, min_value, max_value):
         return 0.5
 
     return max(0.0, min(1.0, (value - min_value) / (max_value - min_value)))
-
 
 def lerp(a, b, t):
     return a + (b - a) * t
@@ -261,8 +261,25 @@ def create_heatmap_object(
         display_mode,
         selected_source,
     )
-    min_value = float(metric_summary[RK.MIN_VALUE])
-    max_value = float(metric_summary[RK.MAX_VALUE])
+
+    # Collect all values for percentile calculation
+    all_values = [
+        get_display_value(r, metric_key, display_mode, selected_source)
+        for r in receivers
+    ]
+    all_values_sorted = sorted(all_values)
+    n = len(all_values_sorted)
+
+    # Use 5th and 95th percentile to ignore outliers
+    p5_index  = max(0, int(0.05 * n))
+    p95_index = min(n - 1, int(0.95 * n))
+    min_value = all_values_sorted[p5_index]
+    max_value = all_values_sorted[p95_index]
+
+    # Fallback to min/max if percentiles are too close
+    if abs(max_value - min_value) < 1e-6:
+        min_value = float(metric_summary[RK.MIN_VALUE])
+        max_value = float(metric_summary[RK.MAX_VALUE])
 
     half_spacing = spacing / 2.0
 
@@ -342,5 +359,97 @@ def create_heatmap_object(
         obj.data.materials.append(material)
     else:
         obj.data.materials[0] = material
+
+    return obj
+
+def create_heatmap_legend(
+    context,
+    metric_key,
+    metric_label,
+    metric_unit,
+    min_value,
+    max_value,
+    band_label,
+):
+    """Creates a color legend mesh next to the heatmap."""
+    props = context.scene.ra_test_props
+
+    collection = ensure_named_collection(context.scene, "RA_Legend")
+    clear_collection_objects(collection)
+
+    num_steps = 20
+    step_height = 0.15
+    step_width = 0.4
+    legend_x = 2.0
+    legend_y = 0.0
+    legend_z = float(props.audience_height) + float(props.heatmap_offset) + 0.1
+
+    verts = []
+    faces = []
+    colors = []
+
+    for i in range(num_steps):
+        t = i / (num_steps - 1)
+        r, g, b = heatmap_rgb(t)
+
+        x = legend_x
+        y = legend_y + i * step_height
+        z = legend_z
+
+        base = len(verts)
+        verts.extend([
+            (x, y, z),
+            (x + step_width, y, z),
+            (x + step_width, y + step_height, z),
+            (x, y + step_height, z),
+        ])
+        faces.append((base, base + 1, base + 2, base + 3))
+        colors.extend([(r, g, b, 1.0)] * 4)
+
+    mesh = bpy.data.meshes.new("RA_Legend_Mesh")
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+
+    color_attr = mesh.color_attributes.new(
+        name="ra_heatmap",
+        type="FLOAT_COLOR",
+        domain="POINT",
+    )
+    for index, rgba in enumerate(colors):
+        color_attr.data[index].color = rgba
+
+    obj = bpy.data.objects.new("RA_Legend", mesh)
+    collection.objects.link(obj)
+
+    material = build_heatmap_material()
+    if len(obj.data.materials) == 0:
+        obj.data.materials.append(material)
+    else:
+        obj.data.materials[0] = material
+
+    # Add min and max text labels
+    unit_text = f" {metric_unit}" if metric_unit else ""
+
+    for label_text, label_z in [
+        (f"max: {max_value:.1f}{unit_text}", legend_z + num_steps * step_height + 0.1),
+        (f"min: {min_value:.1f}{unit_text}", legend_z - 0.3),
+        (f"{metric_label} @ {band_label}", legend_z + num_steps * step_height + 0.4),
+    ]:
+        curve = bpy.data.curves.new(label_text, type='FONT')
+        curve.body = label_text
+        curve.size = 0.15
+        text_obj = bpy.data.objects.new(label_text, curve)
+        text_obj.location = (legend_x, legend_y, label_z)
+        collection.objects.link(text_obj)
+
+    create_heatmap_legend(
+        context,
+        metric_key,
+        metric_summary[RK.LABEL],
+        metric_summary[RK.UNIT],
+        min_value,
+        max_value,
+        band_label,
+    )
 
     return obj

@@ -1,22 +1,11 @@
 """
 ISM solver helpers for the Room Acoustics backend.
-
-The module runs the image-source-only simulation workflow starting from
-a shared Pyroomacoustics room setup.
-
-This file contains the ISM solver entry-point.
 """
 
-# ---------------------------------------------------------------------------
-# Imports
-# ---------------------------------------------------------------------------
-
+import numpy as np
 from backend.postprocessing.multi_area import build_output_receiver_areas
 from backend.setup.room_setup import build_room_setup_from_scene
 
-# ---------------------------------------------------------------------------
-# ism-only solver entry-point
-# ---------------------------------------------------------------------------
 
 def run_ism_simulation(scene):
     setup = build_room_setup_from_scene(
@@ -47,6 +36,9 @@ def run_ism_simulation(scene):
     return {
         "executed_engine": "ISM_ONLY",
         "warning_message": None,
+        "fallback_active": False,
+        "scene_max_order_requested": setup["scene_max_order"],
+        "effective_max_order_used": setup["effective_max_order"],
         "hybrid_info": None,
         "rt_config_used": None,
         "band_info": band_info,
