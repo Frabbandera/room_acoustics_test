@@ -116,7 +116,8 @@ def flatten_receiver_areas(receiver_areas_in, room):
 # Output builders
 # ---------------------------------------------------------------------------
 
-def build_output_receiver_areas(flat_receivers, area_spans, room, source_names, fs):
+def build_output_receiver_areas(flat_receivers, area_spans, room, source_names, fs, scene=None):
+
     out_receiver_areas = []
 
     for area_span in area_spans:
@@ -132,7 +133,22 @@ def build_output_receiver_areas(flat_receivers, area_spans, room, source_names, 
 
             for src_idx, source_name in enumerate(source_names):
                 rir = np.asarray(room.rir[mic_idx][src_idx], dtype=float)
-                per_source_metrics[source_name] = compute_metrics_from_rir(rir, fs)
+                metrics = compute_metrics_from_rir(rir, fs)
+
+                # Apply zone-based furniture correction if available
+                zone_absorption = scene.get("room", {}).get("zone_absorption", {}) if scene else {}
+                room_bounds = scene.get("room", {}).get("room_bounds", {}) if scene else {}
+                if zone_absorption:
+                    from backend.postprocessing.metrics import apply_zone_correction
+                    world_pos = receiver.get(RK.WORLD_POSITION, [0, 0, 0])
+                    metrics = apply_zone_correction(
+                        metrics,
+                        world_pos,
+                        zone_absorption,
+                        room_bounds,
+                    )
+
+                per_source_metrics[source_name] = metrics
 
             avg_metrics = average_metric_dicts(list(per_source_metrics.values()))
 

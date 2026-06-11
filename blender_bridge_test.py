@@ -121,20 +121,45 @@ def unregister():
         except Exception:
             pass
 
+def setup_default_objects():
+    """Create SRC_1 and MAP_Main if they don't exist, as standalone objects."""
+
+    # Create SRC_1 if missing
+    if bpy.data.objects.get("SRC_1") is None:
+        src = bpy.data.objects.new("SRC_1", None)
+        src.empty_display_type = "SPHERE"
+        src.empty_display_size = 0.2
+        src.location = (0.0, 0.0, 1.5)
+        src.parent = None
+        bpy.context.scene.collection.objects.link(src)
+        print("[RA] SRC_1 created at (0, 0, 1.5)")
+
+    # Create MAP_Main if missing
+    if bpy.data.objects.get("MAP_Main") is None:
+        verts = [(-1.5, -1.0, 1.2), (1.5, -1.0, 1.2),
+                 (1.5,  1.0, 1.2), (-1.5,  1.0, 1.2)]
+        face = [[0, 1, 2, 3]]
+        mesh = bpy.data.meshes.new("MAP_Main")
+        mesh.from_pydata(verts, [], face)
+        mesh.update()
+        map_obj = bpy.data.objects.new("MAP_Main", mesh)
+        map_obj.parent = None
+        bpy.context.scene.collection.objects.link(map_obj)
+        print("[RA] MAP_Main created at z=1.2m")
+
+    # Make sure neither is parented to anything
+    for name in ["SRC_1", "MAP_Main"]:
+        obj = bpy.data.objects.get(name)
+        if obj and obj.parent is not None:
+            obj.parent = None
+            print(f"[RA] {name} unparented")
+
+
 if __name__ == "__main__":
     try:
         unregister()
     except Exception:
         pass
     register()
-
-    # Force register RedisplayResults from fresh module
-    from frontend.blender_ui import operators as _o
-    import importlib
-    importlib.reload(_o)
-    try:
-        bpy.utils.register_class(_o.RA_OT_RedisplayResults)
-    except Exception:
-        pass
-
+    setup_default_objects()
     print("Room Acoustics registered successfully.")

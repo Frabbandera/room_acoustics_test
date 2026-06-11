@@ -17,6 +17,24 @@ def _triangulate_face(vertices):
         triangles.append([vertices[0], vertices[i], vertices[i + 1]])
     return triangles
 
+def _compute_room_center(faces):
+    """Compute the centroid of all vertices in the room."""
+    all_verts = [v for face in faces for v in face["vertices"]]
+    return np.mean(all_verts, axis=0)
+
+def _ensure_inward_normal(corners, room_center):
+    """Flip triangle corners if normal points away from room center."""
+    v0 = corners[:, 0]
+    v1 = corners[:, 1]
+    v2 = corners[:, 2]
+    edge1 = v1 - v0
+    edge2 = v2 - v0
+    normal = np.cross(edge1, edge2)
+    tri_center = (v0 + v1 + v2) / 3.0
+    to_room_center = room_center - tri_center
+    if np.dot(normal, to_room_center) < 0:
+        corners = corners[:, [0, 2, 1]]
+    return corners
 
 def _is_ceiling_sloped(faces, tol=0.05):
     """
@@ -77,8 +95,12 @@ def build_pra_room(cfg, *, ray_tracing=False, ray_tracing_kwargs=None):
     """
     faces = cfg["faces"]
 
-    # Extract bounding box from 3D faces
-    floor_polygon, height, z_floor = _extract_bounding_box(faces)
+    # Separate room faces from furniture faces
+    room_faces = [f for f in faces if f.get("surface_type") != "furniture"]
+    furniture_faces = [f for f in faces if f.get("surface_type") == "furniture"]
+
+    # Extract bounding box from room faces only
+    floor_polygon, height, z_floor = _extract_bounding_box(room_faces)
 
     # Build walls using the original prismatic room approach
     walls = build_prismatic_room_walls(
@@ -91,6 +113,33 @@ def build_pra_room(cfg, *, ray_tracing=False, ray_tracing_kwargs=None):
         floor_scat=cfg["floor_scat"],
         ceiling_scat=cfg["ceiling_scat"],
     )
+    # Add furniture faces with their own materials
+    from backend.materials import get_material_absorption, get_material_scattering
+    selected_band_key = cfg.get("band_key", "500")
+    room_center = _compute_room_center(room_faces)
+
+    for i, face in enumerate(furniture_faces):
+        mat_key = face.get("material_key", "reflective_plaster")
+        abs_val = get_material_absorption(mat_key, selected_band_key)
+        scat_val = get_material_scattering(mat_key)
+
+        abs_coeff = np.array([abs_val], dtype=np.float32)
+        scat_coeff = np.array([scat_val], dtype=np.float32)
+
+        triangles = _triangulate_face(face["vertices"])
+        for tri in triangles:
+            corners = np.array(tri, dtype=np.float32).T
+            corners = _ensure_inward_normal(corners, room_center)
+            try:
+                wall = pra.wall_factory(
+                    corners,
+                    absorption=abs_coeff,
+                    scattering=scat_coeff,
+                    name=f"furniture_{i}"
+                )
+                walls.append(wall)
+            except Exception:
+                pass
 
     room_kwargs = {
         "walls": walls,

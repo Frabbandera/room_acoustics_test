@@ -35,6 +35,9 @@ def _resolve_surface_coefficients(materials_cfg, surface_key, material_key, band
 
 def _resolve_common_scene_configuration(scene, *, use_material_scattering, override_max_order=None):
     faces = scene[SK.ROOM]["faces"]
+    # Separate room faces from furniture faces
+    room_faces = [f for f in faces if f.get("surface_type") != "furniture"]
+    furniture_faces = [f for f in faces if f.get("surface_type") == "furniture"]
     fs = int(scene[SK.SIMULATION][SK.FS])
 
     scene_max_order = int(scene[SK.SIMULATION][SK.MAX_ORDER])
@@ -68,9 +71,22 @@ def _resolve_common_scene_configuration(scene, *, use_material_scattering, overr
     }
 
     return {
-        "faces": faces, "fs": fs, "scene_max_order": scene_max_order, "max_order": max_order, "air_absorption": air_absorption,
-        "sources": sources, "receiver_areas_in": receiver_areas_in, "wall_abs": wall_abs, "floor_abs": floor_abs, "ceiling_abs": ceiling_abs,
-        "wall_scat": wall_scat, "floor_scat": floor_scat, "ceiling_scat": ceiling_scat, "band_info": band_info, "materials_info": materials_info,
+        "faces": faces,
+        "band_key": selected_band_key,
+        "fs": fs,
+        "scene_max_order": scene_max_order,
+        "max_order": max_order,
+        "air_absorption": air_absorption,
+        "sources": sources,
+        "receiver_areas_in": receiver_areas_in,
+        "wall_abs": wall_abs,
+        "floor_abs": floor_abs,
+        "ceiling_abs": ceiling_abs,
+        "wall_scat": wall_scat,
+        "floor_scat": floor_scat,
+        "ceiling_scat": ceiling_scat,
+        "band_info": band_info,
+        "materials_info": materials_info,
     }
 
 def build_room_setup_from_scene(scene, *, ray_tracing=False, ray_tracing_kwargs=None, use_material_scattering=None, override_max_order=None):

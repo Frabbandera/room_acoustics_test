@@ -46,6 +46,7 @@ def run_ism_simulation(scene):
         room=room,
         source_names=source_names,
         fs=fs,
+        scene=scene,
     )
 
     return {

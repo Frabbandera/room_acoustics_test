@@ -47,7 +47,7 @@ def validate_room_block(scene: dict):
         for v in verts: _require_point3(v, "vertex")
 
         surface_type = _require_nonempty_string(face.get("surface_type"), f"face {i} surface_type")
-        if surface_type not in ["floor", "ceiling", "wall"]: raise ValueError(f"Invalid surface_type. Must be 'floor', 'ceiling', or 'wall'. Face {i} failed.")
+        if surface_type not in ["floor", "ceiling", "wall", "furniture"]: raise ValueError(f"Invalid surface_type. Must be 'floor', 'ceiling', 'wall', or 'furniture'. Face {i} failed.")
 
 def validate_simulation_block(scene: dict):
     simulation = _require_dict(scene.get(SK.SIMULATION, {}), "scene.simulation")

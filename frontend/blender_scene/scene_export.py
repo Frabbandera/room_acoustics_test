@@ -145,6 +145,48 @@ def build_scene_dict(context):
     room_source_object_name = room_def[ROOM_DEF_SOURCE_OBJECT_NAME]
     faces_3d = room_def[ROOM_DEF_FACES]
 
+    # Compute zone-based furniture absorption map
+    # Divide room into 3x3 grid of zones
+    all_verts = [v for face in faces_3d for v in face["vertices"]]
+    if all_verts:
+        import numpy as np
+        verts_array = np.array(all_verts)
+        room_min_x = float(np.min(verts_array[:, 0]))
+        room_max_x = float(np.max(verts_array[:, 0]))
+        room_min_y = float(np.min(verts_array[:, 1]))
+        room_max_y = float(np.max(verts_array[:, 1]))
+    else:
+        room_min_x, room_max_x = -3.0, 3.0
+        room_min_y, room_max_y = -2.0, 2.0
+
+    zone_grid = 3
+    zone_absorption = {}
+    for zi in range(zone_grid):
+        for zj in range(zone_grid):
+            zone_absorption[f"{zi}_{zj}"] = 0.0
+
+    for obj in bpy.data.objects:
+        if not obj.get("acoustic_object"):
+            continue
+        mat_key = obj.get("acoustic_material", "reflective_plaster")
+        fx = float(obj.location.x)
+        fy = float(obj.location.y)
+
+        # Find which zone this furniture is in
+        zone_i = min(int((fx - room_min_x) / (room_max_x - room_min_x) * zone_grid), zone_grid - 1)
+        zone_j = min(int((fy - room_min_y) / (room_max_y - room_min_y) * zone_grid), zone_grid - 1)
+        zone_i = max(0, zone_i)
+        zone_j = max(0, zone_j)
+        zone_key = f"{zone_i}_{zone_j}"
+
+        # Get absorption coefficient for this material at 500Hz as reference
+        from backend.materials import get_material_absorption
+        abs_coeff = get_material_absorption(mat_key, props.selected_band)
+        zone_absorption[zone_key] = min(1.0, zone_absorption[zone_key] + abs_coeff * 0.3)
+
+        print(f"[RA] {obj.name} placed in zone {zone_key} with absorption {abs_coeff:.2f}")
+
+
     source_objects = _get_sorted_source_objects()
     _validate_sources(source_objects)
     sources_data = _build_sources_data(source_objects)
@@ -158,6 +200,13 @@ def build_scene_dict(context):
             SK.GEOMETRY_MODE: room_mode,
             SK.SOURCE_OBJECT_NAME: room_source_object_name,
             "faces": faces_3d,
+            "zone_absorption": zone_absorption,
+            "room_bounds": {
+                "min_x": room_min_x,
+                "max_x": room_max_x,
+                "min_y": room_min_y,
+                "max_y": room_max_y,
+            },
         },
         SK.SIMULATION: {
             SK.ENGINE: props.simulation_engine,

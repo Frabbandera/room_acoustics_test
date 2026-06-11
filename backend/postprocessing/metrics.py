@@ -91,6 +91,49 @@ def compute_metrics_from_rir(rir, fs):
         "spl_db": float(spl_from_rir(rir)),
     }
 
+
+def apply_zone_correction(metrics, receiver_position, zone_absorption, room_bounds, zone_grid=3):
+    """
+    Apply zone-based absorption correction to metrics.
+    Receivers in zones with furniture get higher absorption correction.
+    """
+    if not zone_absorption or not room_bounds:
+        return metrics
+
+    rx = float(receiver_position[0])
+    ry = float(receiver_position[1])
+
+    min_x = room_bounds.get("min_x", -3.0)
+    max_x = room_bounds.get("max_x", 3.0)
+    min_y = room_bounds.get("min_y", -2.0)
+    max_y = room_bounds.get("max_y", 2.0)
+
+    room_width = max_x - min_x
+    room_depth = max_y - min_y
+
+    if room_width < 1e-6 or room_depth < 1e-6:
+        return metrics
+
+    zone_i = min(int((rx - min_x) / room_width * zone_grid), zone_grid - 1)
+    zone_j = min(int((ry - min_y) / room_depth * zone_grid), zone_grid - 1)
+    zone_i = max(0, zone_i)
+    zone_j = max(0, zone_j)
+    zone_key = f"{zone_i}_{zone_j}"
+
+    correction = zone_absorption.get(zone_key, 0.0)
+
+    if correction < 1e-6:
+        return metrics
+
+    corrected = dict(metrics)
+    corrected["spl_db"] = metrics["spl_db"] - correction * 10.0
+    corrected["c50_db"] = metrics["c50_db"] + correction * 5.0
+    corrected["c80_db"] = metrics["c80_db"] + correction * 5.0
+    corrected["d50"] = min(1.0, metrics["d50"] + correction * 0.1)
+
+    return corrected
+
+
 # ---------------------------------------------------------------------------
 # Metric summary builder
 # ---------------------------------------------------------------------------

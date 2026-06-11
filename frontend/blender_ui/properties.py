@@ -378,3 +378,16 @@ class RA_TestProperties(PropertyGroup):
         name="Last Results Path",
         default="",
     )
+
+    simulation_progress: IntProperty(
+        name="Simulation Progress",
+        default=0,
+        min=0,
+        max=100,
+        subtype='PERCENTAGE',
+    )
+
+    simulation_status: StringProperty(
+        name="Simulation Status",
+        default="",
+    )
