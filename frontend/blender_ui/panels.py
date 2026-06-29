@@ -236,6 +236,9 @@ class RA_PT_SimulationPanel(Panel):
         )
         engine_col.prop(props, "fs")
         engine_col.prop(props, "max_order")
+        engine_col.separator()
+        engine_col.label(text="SOURCE POWER")
+        engine_col.prop(props, "source_swl")
 
         warning_text = format_hybrid_max_order_warning(props)
         if warning_text:

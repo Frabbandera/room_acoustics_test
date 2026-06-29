@@ -133,7 +133,8 @@ def build_output_receiver_areas(flat_receivers, area_spans, room, source_names, 
 
             for src_idx, source_name in enumerate(source_names):
                 rir = np.asarray(room.rir[mic_idx][src_idx], dtype=float)
-                metrics = compute_metrics_from_rir(rir, fs)
+                source_swl = scene.get("simulation", {}).get("source_swl", 120.0) if scene else 120.0
+                metrics = compute_metrics_from_rir(rir, fs, source_swl)
 
                 # Apply zone-based furniture correction if available
                 zone_absorption = scene.get("room", {}).get("zone_absorption", {}) if scene else {}

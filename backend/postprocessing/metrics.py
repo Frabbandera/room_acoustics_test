@@ -73,22 +73,29 @@ def d50_from_rir(rir, fs):
     return early_energy / total_energy
 
 
-def spl_from_rir(rir):
+def spl_from_rir(rir, source_swl=120.0):
     rir = _as_float_array(rir)
     total_energy = np.sum(rir ** 2) + EPS
 
-    return 10.0 * np.log10(total_energy)
+    # Convert source SWL (dB re 1pW) to linear power scaling factor
+    source_power_linear = 10 ** ((source_swl - 120.0) / 10.0)
+
+    # Scale energy by source power and reference to 20 uPa (p_ref^2 = 4e-10)
+    p_ref_squared = 4e-10
+    absolute_energy = total_energy * source_power_linear
+
+    return 10.0 * np.log10(absolute_energy / p_ref_squared + EPS)
 
 # ---------------------------------------------------------------------------
 # Metric collection builder
 # ---------------------------------------------------------------------------
 
-def compute_metrics_from_rir(rir, fs):
+def compute_metrics_from_rir(rir, fs, source_swl=120.0):
     return {
         "c50_db": float(c50_from_rir(rir, fs)),
         "c80_db": float(c80_from_rir(rir, fs)),
         "d50": float(d50_from_rir(rir, fs)),
-        "spl_db": float(spl_from_rir(rir)),
+        "spl_db": float(spl_from_rir(rir, source_swl)),
     }
 
 

@@ -222,6 +222,7 @@ def build_scene_dict(context):
             SK.FS: int(props.fs),
             SK.MAX_ORDER: int(props.max_order),
             SK.AIR_ABSORPTION: bool(props.air_absorption),
+	    "source_swl": float(props.source_swl),
         },
         SK.BAND: {
             SK.KEY: props.selected_band,
