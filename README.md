@@ -1,4 +1,3 @@
-cat > README.md << 'READMEEOF'
 # BlenderAcoustics
 
 An open-source room acoustic simulation and visualization tool built on top of Blender and [Pyroomacoustics](https://github.com/LCAV/pyroomacoustics). Model room geometry directly in Blender, simulate sound propagation, and visualize acoustic metrics as interactive heatmaps in the viewport.
