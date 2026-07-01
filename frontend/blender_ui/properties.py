@@ -249,6 +249,14 @@ class RA_TestProperties(PropertyGroup):
         precision=3,
     )
 
+    source_swl: bpy.props.FloatProperty(
+    	name="Source Power (dB SWL)",
+    	description="Sound power level of the source in dB re 1 pW. Typical values: speech ~70 dB, loudspeaker ~110 dB, reference ~120 dB",
+    	default=120.0,
+    	min=0.0,
+    	max=200.0,
+    )
+
     # Materials
 
     wall_material: EnumProperty(
@@ -376,5 +384,18 @@ class RA_TestProperties(PropertyGroup):
 
     last_results_path: StringProperty(
         name="Last Results Path",
+        default="",
+    )
+
+    simulation_progress: IntProperty(
+        name="Simulation Progress",
+        default=0,
+        min=0,
+        max=100,
+        subtype='PERCENTAGE',
+    )
+
+    simulation_status: StringProperty(
+        name="Simulation Status",
         default="",
     )

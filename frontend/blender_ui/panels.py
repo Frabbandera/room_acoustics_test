@@ -101,6 +101,37 @@ class RA_PT_MaterialsPanel(Panel):
         col.prop(props, "wall_material")
         col.prop(props, "ceiling_material")
 
+class RA_PT_FurniturePanel(Panel):
+    bl_label = "Furniture"
+    bl_idname = "RA_PT_furniture_panel"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = ROOM_ACOUSTICS_CATEGORY
+    bl_parent_id = ROOT_PANEL_ID
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        layout = self.layout
+
+        info_box = layout.box()
+        info_col = info_box.column(align=True)
+        info_col.label(text="ACOUSTIC OBJECTS")
+        info_col.label(text="Add objects, position them,")
+        info_col.label(text="then run simulation.")
+
+        layout.operator("ra.add_sofa", icon="MESH_CUBE")
+        layout.operator("ra.add_bookshelf", icon="MESH_CUBE")
+        layout.operator("ra.add_window", icon="MESH_PLANE")
+
+        # Show existing furniture objects
+        furn_objs = [o for o in bpy.data.objects if o.get("acoustic_object")]
+        if furn_objs:
+            furn_box = layout.box()
+            furn_col = furn_box.column(align=True)
+            furn_col.label(text="PLACED OBJECTS")
+            for obj in furn_objs:
+                mat = obj.get("acoustic_material", "unknown")
+                furn_col.label(text=f"{obj.name} [{mat}]")
 
 class RA_PT_ReceiversPanel(Panel):
     bl_label = "Receivers"
@@ -205,6 +236,9 @@ class RA_PT_SimulationPanel(Panel):
         )
         engine_col.prop(props, "fs")
         engine_col.prop(props, "max_order")
+        engine_col.separator()
+        engine_col.label(text="SOURCE POWER")
+        engine_col.prop(props, "source_swl")
 
         warning_text = format_hybrid_max_order_warning(props)
         if warning_text:
@@ -263,11 +297,27 @@ class RA_PT_OutputPanel(Panel):
         quantity_col.label(text="DISPLAYED QUANTITY")
         quantity_col.prop(props, "selected_band")
         quantity_col.prop(props, "selected_metric")
-
+      
         layout.separator()
         layout.operator("ra.run_grid_test", icon="PLAY")
-        layout.operator("ra.redisplay_results", icon="FILE_REFRESH")
 
+        if props.simulation_progress > 0 and props.simulation_progress < 100:
+            progress_box = layout.box()
+            progress_col = progress_box.column(align=True)
+            progress_col.label(text=f"Progress: {props.simulation_progress}%")
+            progress_col.prop(props, "simulation_progress", slider=True, text="")
+            if props.simulation_status:
+                progress_col.label(text=props.simulation_status)    
+
+        try:
+            from frontend.blender_ui.operators import RA_OT_RedisplayResults
+            try:
+                bpy.utils.register_class(RA_OT_RedisplayResults)
+            except Exception:
+                pass
+            layout.operator("ra.redisplay_results", icon="FILE_REFRESH")
+        except Exception as e:
+            layout.label(text=f"Redisplay unavailable: {str(e)[:30]}")
 
 class RA_PT_RunStatusPanel(Panel):
     bl_label = "Run Status"
@@ -333,3 +383,35 @@ class RA_PT_EnvironmentPanel(Panel):
         col = layout.column(align=True)
         col.prop(props, "project_dir")
         col.prop(props, "conda_python")
+
+class RA_PT_FurniturePanel(Panel):
+    bl_label = "Furniture"
+    bl_idname = "RA_PT_furniture_panel"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = ROOM_ACOUSTICS_CATEGORY
+    bl_parent_id = ROOT_PANEL_ID
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        layout = self.layout
+
+        info_box = layout.box()
+        info_col = info_box.column(align=True)
+        info_col.label(text="ACOUSTIC OBJECTS")
+        info_col.label(text="Add objects, position them,")
+        info_col.label(text="then run simulation.")
+
+        layout.operator("ra.add_sofa", icon="MESH_CUBE")
+        layout.operator("ra.add_bookshelf", icon="MESH_CUBE")
+        layout.operator("ra.add_window", icon="MESH_PLANE")
+
+        # Show existing furniture objects
+        furn_objs = [o for o in bpy.data.objects if o.get("acoustic_object")]
+        if furn_objs:
+            furn_box = layout.box()
+            furn_col = furn_box.column(align=True)
+            furn_col.label(text="PLACED OBJECTS")
+            for obj in furn_objs:
+                mat = obj.get("acoustic_material", "unknown")
+                furn_col.label(text=f"{obj.name} [{mat}]")

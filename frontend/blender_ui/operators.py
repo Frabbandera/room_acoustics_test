@@ -148,6 +148,11 @@ class RA_OT_RunGridTest(Operator):
         props = context.scene.ra_test_props
 
         try:
+            props.simulation_progress = 5
+            props.simulation_status = "Exporting scene..."
+            for area in bpy.context.screen.areas:
+                area.tag_redraw()
+
             # Resolve project paths.
 
             project_dir = Path(bpy.path.abspath(props.project_dir))
@@ -177,6 +182,13 @@ class RA_OT_RunGridTest(Operator):
 
             # Run the backend simulation.
 
+            # Run the backend simulation with progress updates.
+
+            props.simulation_progress = 25
+            props.simulation_status = "Running simulation..."
+            for area in bpy.context.screen.areas:
+                area.tag_redraw()   
+
             cmd = [
                 str(conda_python),
                 str(backend_script),
@@ -185,6 +197,23 @@ class RA_OT_RunGridTest(Operator):
                 "--out",
                 str(results_path),
             ]
+
+            props.simulation_progress = 25
+            props.simulation_status = "Running simulation..."
+            for area in bpy.context.screen.areas:
+                area.tag_redraw()
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            props.simulation_progress = 75
+            props.simulation_status = "Computing metrics..."
+            for area in bpy.context.screen.areas:
+                area.tag_redraw()
 
             result = subprocess.run(
                 cmd,
@@ -351,6 +380,10 @@ class RA_OT_RunGridTest(Operator):
                 )
 
             print(result.stdout)
+            props.simulation_progress = 100
+            props.simulation_status = "Complete!"
+            for area in bpy.context.screen.areas:
+                area.tag_redraw()
             return {'FINISHED'}
 
         except Exception as e:
@@ -362,7 +395,7 @@ class RA_OT_RunGridTest(Operator):
             self.report({'ERROR'}, str(e))
             return {'CANCELLED'}
 
-        class RA_OT_RedisplayResults(Operator):
+class RA_OT_RedisplayResults(Operator):
     bl_idname = "ra.redisplay_results"
     bl_label = "Redisplay Results"
     bl_description = "Redraw markers and heatmap from last results without rerunning the simulation"
@@ -371,13 +404,13 @@ class RA_OT_RunGridTest(Operator):
         props = context.scene.ra_test_props
 
         if not props.last_results_path:
-            self.report({'ERROR'}, "No results found. Run the simulation first.")
-            return {'CANCELLED'}
+            self.report({"ERROR"}, "No results found. Run the simulation first.")
+            return {"CANCELLED"}
 
         results_path = Path(props.last_results_path)
         if not results_path.exists():
-            self.report({'ERROR'}, "Results file not found. Run the simulation first.")
-            return {'CANCELLED'}
+            self.report({"ERROR"}, "Results file not found. Run the simulation first.")
+            return {"CANCELLED"}
 
         try:
             with results_path.open("r", encoding="utf-8") as f:
@@ -424,9 +457,121 @@ class RA_OT_RunGridTest(Operator):
                     selected_source,
                 )
 
-            self.report({'INFO'}, f"Redisplayed {metric_key} from last results.")
-            return {'FINISHED'}
+            self.report({"INFO"}, f"Redisplayed {metric_key} from last results.")
+            return {"FINISHED"}
 
+        except Exception as e:
+            self.report({"ERROR"}, str(e))
+            return {"CANCELLED"}
+
+
+# ---------------------------------------------------------------------------
+# Furniture operators
+# ---------------------------------------------------------------------------
+
+class RA_OT_AddSofa(Operator):
+    bl_idname = "ra.add_sofa"
+    bl_label = "Add Sofa"
+    bl_description = "Add a sofa obstacle with high absorption (heavy curtain material)"
+
+    def execute(self, context):
+        try:
+            # Create sofa mesh (simple box approximation)
+            verts = [
+                # Seat
+                (-0.9, -0.4, 0.0), (0.9, -0.4, 0.0),
+                (0.9,  0.4, 0.0),  (-0.9,  0.4, 0.0),
+                (-0.9, -0.4, 0.45), (0.9, -0.4, 0.45),
+                (0.9,  0.4, 0.45), (-0.9,  0.4, 0.45),
+                # Backrest
+                (-0.9, 0.25, 0.45), (0.9, 0.25, 0.45),
+                (0.9,  0.40, 0.45), (-0.9, 0.40, 0.45),
+                (-0.9, 0.25, 1.0),  (0.9, 0.25, 1.0),
+                (0.9,  0.40, 1.0),  (-0.9, 0.40, 1.0),
+            ]
+            faces = [
+                [0,1,2,3], [4,5,6,7], [0,1,5,4],
+                [1,2,6,5], [2,3,7,6], [3,0,4,7],
+                [8,9,10,11], [12,13,14,15], [8,9,13,12],
+                [9,10,14,13], [10,11,15,14], [11,8,12,15],
+            ]
+            mesh = bpy.data.meshes.new("Sofa_Mesh")
+            mesh.from_pydata(verts, [], faces)
+            mesh.update()
+            obj = bpy.data.objects.new("FURN_Sofa", mesh)
+            obj.location = (0.0, 0.0, 0.0)
+            obj.parent = None
+            obj["acoustic_material"] = "heavy_curtain"
+            obj["acoustic_object"] = True
+            context.scene.collection.objects.link(obj)
+            self.report({'INFO'}, "Sofa added — move it inside the room then run simulation")
+            return {'FINISHED'}
+        except Exception as e:
+            self.report({'ERROR'}, str(e))
+            return {'CANCELLED'}
+
+
+class RA_OT_AddBookshelf(Operator):
+    bl_idname = "ra.add_bookshelf"
+    bl_label = "Add Bookshelf"
+    bl_description = "Add a bookshelf with medium absorption and diffusion (wood material)"
+
+    def execute(self, context):
+        try:
+            verts = [
+                (-0.15, -1.0, 0.0), (0.15, -1.0, 0.0),
+                (0.15,  1.0, 0.0),  (-0.15,  1.0, 0.0),
+                (-0.15, -1.0, 2.0), (0.15, -1.0, 2.0),
+                (0.15,  1.0, 2.0),  (-0.15,  1.0, 2.0),
+            ]
+            faces = [
+                [0,1,2,3], [4,5,6,7], [0,1,5,4],
+                [1,2,6,5], [2,3,7,6], [3,0,4,7],
+            ]
+            mesh = bpy.data.meshes.new("Bookshelf_Mesh")
+            mesh.from_pydata(verts, [], faces)
+            mesh.update()
+            obj = bpy.data.objects.new("FURN_Bookshelf", mesh)
+            obj.location = (0.0, 0.0, 0.0)
+            obj.parent = None
+            obj["acoustic_material"] = "wood"
+            obj["acoustic_object"] = True
+            context.scene.collection.objects.link(obj)
+            self.report({'INFO'}, "Bookshelf added — move it inside the room then run simulation")
+            return {'FINISHED'}
+        except Exception as e:
+            self.report({'ERROR'}, str(e))
+            return {'CANCELLED'}
+
+
+class RA_OT_AddWindow(Operator):
+    bl_idname = "ra.add_window"
+    bl_label = "Add Window"
+    bl_description = "Add a window panel with low absorption (reflective plaster material)"
+
+    def execute(self, context):
+        try:
+            verts = [
+                (-0.02, -0.8, 0.0), (0.02, -0.8, 0.0),
+                (0.02,  0.8, 0.0),  (-0.02,  0.8, 0.0),
+                (-0.02, -0.8, 1.5), (0.02, -0.8, 1.5),
+                (0.02,  0.8, 1.5),  (-0.02,  0.8, 1.5),
+            ]
+            faces = [
+                [0,1,2,3], [4,5,6,7], [0,1,5,4],
+                [1,2,6,5], [2,3,7,6], [3,0,4,7],
+            ]
+            mesh = bpy.data.meshes.new("Window_Mesh")
+            mesh.from_pydata(verts, [], faces)
+            mesh.update()
+            obj = bpy.data.objects.new("FURN_Window", mesh)
+            obj.location = (0.0, 0.0, 0.0)
+            obj.parent = None
+            obj["acoustic_material"] = "reflective_plaster"
+            obj["acoustic_object"] = True
+            context.scene.collection.objects.link(obj)
+            self.report({'INFO'}, "Window added — move it to a wall then run simulation")
+            return {'FINISHED'}
         except Exception as e:
             self.report({'ERROR'}, str(e))
             return {'CANCELLED'}
